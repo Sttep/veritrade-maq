@@ -130,8 +130,17 @@ def main() -> int:
         model = args.model or None
         client = DeepSeekClient(v, **({"model": model} if model else {}),
                                 batch_size=args.batch_size, workers=args.workers)
-        if pendientes:
-            client.run(list(pendientes.items()), cache, on_batch=make_on_batch())
+        on_batch = make_on_batch()
+        # Pase inicial + reintentos para índices que el LLM haya omitido en su batch.
+        pend = dict(pendientes)
+        for paso in range(3):
+            if not pend:
+                break
+            client.batch_size = args.batch_size if paso == 0 else 1  # 1 por request al reintentar
+            client.run(list(pend.items()), cache, on_batch=on_batch)
+            pend = {k: d for k, d in pendientes.items() if k not in cache}
+            if paso and pend:
+                print(f"  reintento {paso}: quedan {len(pend)} sin respuesta", file=sys.stderr)
         stats = client.stats
 
     # Expandir cache -> registros normalizados
