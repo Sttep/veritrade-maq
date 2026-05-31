@@ -19,9 +19,10 @@ Recibes un JSON con una lista `items`, cada uno con `i` (índice) y `desc` (text
 Para CADA item, extrae y normaliza EXACTAMENTE estos 6 campos y responde SOLO con JSON válido.
 
 Campos y valores permitidos:
-- marca: una de esta lista EXACTA de marcas (cópiala tal cual). Si la marca del texto NO está en la lista, usa null. NO inventes.
-  Lista: {marcas}
-- modelo_codigo: el código/modelo del vehículo tal como aparece en el texto (string corto, p.ej. "DF-1718", "FVR34", "1828"). null si no se puede determinar.
+- marca: la marca del vehículo. Esta lista de referencia tiene la forma canónica preferida (úsala tal cual si la marca coincide):
+  Lista de referencia: {marcas}
+  IMPORTANTE: la lista NO es exhaustiva. Si la marca del texto NO está en la lista, devuélvela igual tal como aparece en el texto (NO uses null por eso). Solo usa null si realmente no hay marca identificable. NUNCA inventes una marca que no esté en el texto.
+- modelo_codigo: el código/modelo del vehículo tal como aparece en el texto (string corto, p.ej. "DF-1718", "FVR34", "1828"), aunque la marca no esté en la lista de referencia. null si no se puede determinar.
 - traccion: una de [4x2, 4x4, 6x4, 6x8]. null si no aparece.
 - combustible: una de [Diesel, GNV, GLP, Gasolina]. null si no aparece.
 - clasificacion: una de [N1, N2, N3]. null si no aparece.

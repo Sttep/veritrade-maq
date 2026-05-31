@@ -15,8 +15,22 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import os
 import sys
 from pathlib import Path
+
+
+def load_dotenv(path=".env") -> None:
+    """Carga variables de un .env simple (KEY=VALUE) al entorno, sin pisar las ya definidas."""
+    p = Path(path)
+    if not p.exists():
+        return
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, val = line.partition("=")
+        os.environ.setdefault(k.strip(), val.strip().strip('"').strip("'"))
 
 import openpyxl
 import pandas as pd
@@ -32,7 +46,7 @@ OUT_XLSX = "camiones_8704229000_normalizado.xlsx"
 HEADER_ROW = 6
 
 NORM_COLS = [
-    "marca_raw_llm", "marca_norm", "marca_in_vocab",
+    "marca_raw_llm", "marca_norm", "marca_in_vocab", "marca_sugerencia",
     "modelo_raw_llm", "modelo_match", "modelo_score", "modelo_flag",
     "traccion_norm", "traccion_valido", "combustible_norm", "combustible_valido",
     "clasificacion_norm", "clasificacion_valido", "caja_norm", "caja_valido",
@@ -88,6 +102,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="muestrea y reporta sin llamar a la API")
     args = ap.parse_args()
 
+    load_dotenv()
     v = vocab_mod.load()
     df = load_v1_with_desc()
     sub = df if args.all else sampler.sample(df, v, n=args.sample)
@@ -142,11 +157,22 @@ def main() -> int:
         (~out["traccion_valido"]) | (~out["combustible_valido"]) |
         (~out["clasificacion_valido"]) | (~out["caja_valido"])
     ]
+    # Vocabulario nuevo: marcas leídas que NO están en ejemplo.xlsx (candidatas a ampliar)
+    nuevos = out[(~out["marca_in_vocab"]) & out["marca_norm"].notna()]
+    vocab_nuevo = (nuevos.groupby("marca_norm")
+                   .agg(unidades=("marca_norm", "size"),
+                        sugerencia=("marca_sugerencia", "first"),
+                        modelos=("modelo_raw_llm", lambda s: ", ".join(
+                            sorted({str(x) for x in s if pd.notna(x)})[:10])))
+                   .sort_values("unidades", ascending=False).reset_index())
+
     with pd.ExcelWriter(OUT_XLSX, engine="openpyxl") as xw:
         out.to_excel(xw, sheet_name="normalizado_llm", index=False)
         revisar.to_excel(xw, sheet_name="_revisar_llm", index=False)
+        vocab_nuevo.to_excel(xw, sheet_name="_vocab_nuevo", index=False)
         rep.to_excel(xw, sheet_name="_reporte", index=False)
-    print(f"\nEscrito: {OUT_XLSX}  ({len(out)} filas, {len(revisar)} a revisar)")
+    print(f"\nEscrito: {OUT_XLSX}  ({len(out)} filas, {len(revisar)} a revisar, "
+          f"{len(vocab_nuevo)} marcas nuevas fuera del ejemplo)")
     return 0
 
 

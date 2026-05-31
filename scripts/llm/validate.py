@@ -83,15 +83,19 @@ def normalize_record(item: dict, v: Vocab) -> dict:
     if marca_raw:
         canon = v.marca_canonica(marca_raw)
         if canon:
+            # coincide (normalizado) con una marca canónica del vocabulario
             rec["marca_norm"], rec["marca_in_vocab"] = canon, True
+            rec["marca_sugerencia"] = None
         else:
+            # marca NUEVA (fuera del ejemplo): se conserva tal cual, no se fuerza.
+            # Se guarda una sugerencia de la más parecida (>=90) solo informativa.
             cand, score = _best(norm_key(marca_raw), [norm_key(m) for m in v.marcas])
-            # mapear de vuelta a la marca canónica del mejor norm_key
             back = next((m for m in v.marcas if norm_key(m) == cand), None) if cand else None
-            rec["marca_norm"] = back if score >= MODELO_OK else marca_raw
+            rec["marca_norm"] = marca_raw.upper()
             rec["marca_in_vocab"] = False
+            rec["marca_sugerencia"] = back if (back and score >= MODELO_OK) else None
     else:
-        rec["marca_norm"], rec["marca_in_vocab"] = None, False
+        rec["marca_norm"], rec["marca_in_vocab"], rec["marca_sugerencia"] = None, False, None
 
     # --- modelo (fuzzy contra modelos de la marca canónica) ---
     modelo_raw = item.get("modelo_codigo")
@@ -127,6 +131,7 @@ def empty_record() -> dict:
     """Registro vacío para filas sin respuesta del LLM."""
     rec = {
         "marca_raw_llm": None, "marca_norm": None, "marca_in_vocab": False,
+        "marca_sugerencia": None,
         "modelo_raw_llm": None, "modelo_match": None, "modelo_score": None,
         "modelo_flag": "sin_respuesta",
     }
