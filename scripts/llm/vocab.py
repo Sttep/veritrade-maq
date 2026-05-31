@@ -6,6 +6,7 @@ normalizar valores crudos a la forma canónica.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import openpyxl
 
 DEFAULT_PATH = "ejemplo.xlsx"
+EXTRA_PATH = "data/vocab_extra.json"
 
 # Sinónimos -> valor canónico (claves en MAYÚSCULAS, ya normalizadas con norm_key)
 COMBUSTIBLE_SYN = {
@@ -52,10 +54,12 @@ class Vocab:
     clasificacion: list[str]
     caja: list[str]
     _marca_idx: dict[str, str] = field(default_factory=dict)  # norm_key -> marca canónica
+    _alias_idx: dict[str, str] = field(default_factory=dict)   # norm_key(alias) -> marca canónica
 
     def marca_canonica(self, raw: str) -> str | None:
-        """Devuelve la marca canónica si raw coincide exacto (normalizado), si no None."""
-        return self._marca_idx.get(norm_key(raw))
+        """Marca canónica si raw coincide (normalizado) con una marca o un alias; si no None."""
+        k = norm_key(raw)
+        return self._marca_idx.get(k) or self._alias_idx.get(k)
 
     def enum_norm(self, campo: str, raw: str) -> str | None:
         """Normaliza un valor de enum vía sinónimos. None si no mapea a un valor permitido."""
@@ -109,7 +113,30 @@ def load(path: str | Path = DEFAULT_PATH) -> Vocab:
         caja=sorted(ca),
     )
     v._marca_idx = {norm_key(m): m for m in marcas}
+    _merge_extra(v, EXTRA_PATH)
     return v
+
+
+def _merge_extra(v: Vocab, path: str | Path) -> None:
+    """Fusiona data/vocab_extra.json: marcas nuevas + alias hacia canónicas."""
+    p = Path(path)
+    if not p.exists():
+        return
+    extra = json.loads(p.read_text(encoding="utf-8"))
+    for marca, modelos in (extra.get("marcas") or {}).items():
+        marca = marca.strip()
+        if norm_key(marca) not in v._marca_idx:
+            v.marcas.append(marca)
+            v._marca_idx[norm_key(marca)] = marca
+        v.modelos_por_marca.setdefault(marca, [])
+        for mod in modelos or []:
+            if mod not in v.modelos_por_marca[marca]:
+                v.modelos_por_marca[marca].append(str(mod).strip())
+    for alias, canon in (extra.get("aliases") or {}).items():
+        canon = canon.strip()
+        if norm_key(canon) not in v._marca_idx:
+            raise ValueError(f"alias '{alias}' apunta a marca inexistente '{canon}'")
+        v._alias_idx[norm_key(alias)] = v._marca_idx[norm_key(canon)]
 
 
 if __name__ == "__main__":

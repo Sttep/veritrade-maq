@@ -1,0 +1,15 @@
+{
+  "_doc": "Extensión editable del vocabulario semilla (ejemplo.xlsx). 'aliases' mapea variantes crudas -> marca canónica existente. 'marcas' agrega marcas canónicas nuevas con sus modelos. Decidido con el usuario (SME) el 2026-05-31.",
+  "aliases": {
+    "UD": "UD TRUCKS",
+    "MITSUBISHI FUSO": "FUSO",
+    "HOWO SINOTRUK": "HOWO",
+    "HOWO SINOTRUCK": "HOWO",
+    "SINOTRUCK HOWO": "HOWO",
+    "SINOTRUCK": "SINOTRUK"
+  },
+  "marcas": {
+    "FORLAND": ["F700 VIP CH", "FD400", "FD400N", "FD600", "FD600N", "FD800", "FD800N"],
+    "HOWO": ["ZZ1168F4715E1", "ZZ1087G381CE183"]
+  }
+}
