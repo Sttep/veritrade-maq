@@ -35,8 +35,9 @@ Parser approach (decided): **deterministic dictionary parser** (approach A) — 
 
 ## Working conventions
 
-- This directory is **not a git repo**. Don't assume git operations work.
+- Git repo initialized by `bd init` (no remote configured yet).
 - Specs follow the superpowers workflow under `docs/superpowers/specs/`. Brainstorm → spec → (plan) → implement.
+- Extraction entrypoint: `python3 scripts/extract_descripcion.py` → writes `camiones_8704229000_estructurado.xlsx` + prints the coverage report.
 - Output target: `camiones_8704229000_estructurado.xlsx`, one row per imported unit, plus a printed per-field **coverage report** (the signal for whether approach B is needed).
 - Per org policy: this is real commercial/customs data — do not send it to external services (no LLM extraction without explicit approval).
 

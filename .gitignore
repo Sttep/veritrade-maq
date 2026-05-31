@@ -1,5 +1,3 @@
-
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
+camiones_8704229000_estructurado.xlsx
+*.xlsx
+__pycache__/
