@@ -11,13 +11,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tqdm import tqdm  # <-- IMPORTADO PARA LA BARRA DE CARGA
 
 from . import schema
 from .cache import Cache, text_key
 from .vocab import Vocab
 
 BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")  # <-- CAMBIADO
 
 
 class EmptyContentError(RuntimeError):
@@ -50,7 +51,7 @@ class DeepSeekClient:
         api_key = os.environ.get("DEEPSEEK_API_KEY")
         if not api_key:
             raise SystemExit("Falta DEEPSEEK_API_KEY en el entorno. Exporta tu clave (rotada).")
-        from openai import OpenAI  # import diferido
+        from openai import OpenAI
         self.client = OpenAI(api_key=api_key, base_url=BASE_URL)
         self.model = model
         self.batch_size = batch_size
@@ -59,15 +60,15 @@ class DeepSeekClient:
         self.system = schema.build_system_prompt(vocab)
         self.stats = Stats()
 
-    @retry(reraise=True, stop=stop_after_attempt(5),
-           wait=wait_exponential(multiplier=1, min=2, max=30),
-           retry=retry_if_exception_type((EmptyContentError, Exception)))
+    @retry(reraise=True, stop=stop_after_attempt(3),  # <-- Reducido a 3 intentos
+           wait=wait_exponential(multiplier=1, min=2, max=10),  # <-- Reducido max a 10s
+           retry=retry_if_exception_type((EmptyContentError,)))
     def _call(self, batch: list[tuple[int, str]]) -> str:
         resp = self.client.chat.completions.create(
             model=self.model,
             temperature=0,
             max_tokens=self.max_tokens,
-            response_format={"type": "json_object"},
+            # SIN response_format para evitar vacíos con v4-flash
             messages=[
                 {"role": "system", "content": self.system},
                 {"role": "user", "content": schema.build_user_message(batch)},
@@ -81,10 +82,6 @@ class DeepSeekClient:
 
     def run(self, pairs: list[tuple[str, str]], cache: Cache,
             on_batch=None) -> None:
-        """pairs: lista de (text_key, desc) ÚNICOS y NO cacheados. Llena la cache.
-
-        on_batch(content, batch) opcional para validación/checkpoint por batch.
-        """
         batches: list[list[tuple[int, str]]] = []
         keymaps: list[dict[int, str]] = []
         for start in range(0, len(pairs), self.batch_size):
@@ -96,13 +93,32 @@ class DeepSeekClient:
             content = self._call(batches[idx])
             return idx, content
 
-        with ThreadPoolExecutor(max_workers=self.workers) as ex:
-            futs = {ex.submit(work, i): i for i in range(len(batches))}
-            for fut in as_completed(futs):
+        # Inicializamos la barra de progreso visual con el total de lotes a procesar
+        pbar = tqdm(total=len(batches), desc="Procesando lotes con DeepSeek", unit="lote")
+
+        # Si solo hay 1 worker, ejecutar sin hilos para evitar bugs en Python 3.14
+        if self.workers == 1:
+            for i in range(len(batches)):
                 try:
-                    idx, content = fut.result()
+                    idx, content = work(i)
+                    if on_batch:
+                        on_batch(content, batches[idx], keymaps[idx], cache)
                 except Exception:
                     self.stats.errors += 1
-                    continue
-                if on_batch:
-                    on_batch(content, batches[idx], keymaps[idx], cache)
+                finally:
+                    pbar.update(1)  # <-- Actualiza la barra en modo secuencial
+        else:
+            with ThreadPoolExecutor(max_workers=self.workers) as ex:
+                futs = {ex.submit(work, i): i for i in range(len(batches))}
+                for fut in as_completed(futs):
+                    try:
+                        idx, content = fut.result()
+                    except Exception:
+                        self.stats.errors += 1
+                        continue
+                    finally:
+                        pbar.update(1)  # <-- Actualiza la barra de forma segura cuando termina cada hilo
+                    if on_batch:
+                        on_batch(content, batches[idx], keymaps[idx], cache)
+        
+        pbar.close()  # Cierra la barra de carga limpiamente al finalizar
