@@ -1,6 +1,7 @@
 [build]
   base    = "frontend"
-  command = "npm install --include=dev && npm run build"
+  # Cambiamos el comando para que no busque cosas de Node/npm, sino que prepare tu HTML
+  command = "echo 'Preparando entorno estático'"
   publish = "dist"
 
 [[redirects]]

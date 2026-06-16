@@ -30,12 +30,14 @@ CAT_REQUERIDAS = ["MINICARGADOR FRONTAL", "CARGADOR FRONTAL", "RETROEXCAVADORA",
 MARCA_PROPIA = "NEW HOLLAND"
 IMPORTADOR_PROPIO = "WITHMORY"
 
+# Mapeo y separación estricta de las métricas FOB y CIF
 MAPEO_COLUMNAS = {
     'marca_norm': ['marca_norm', 'marca_normalizada'],
     'modelo': ['modelo_match', 'modelo'],
     'categoria_peso': ['categoria_peso', 'rango_peso', 'capacidad'],
     'grupo_importador': ['grupo_importador', 'importador_grupo', 'importador'],
-    'valor_fob': ['valor_fob', 'fob', 'fob_usd', 'cif']
+    'valor_fob': ['valor_fob', 'fob', 'fob_usd'],
+    'valor_cif': ['valor_cif', 'cif', 'cif_usd']
 }
 
 # ============ ESTILOS CSS ============
@@ -76,6 +78,8 @@ def destacar_fila_nh(row):
         return ['background-color: #FFE0B2; font-weight: bold;'] * len(row)
     if 'Marca' in row.index and row['Marca'] == MARCA_PROPIA:
         return ['background-color: #FFE0B2; font-weight: bold;'] * len(row)
+    if 'mes_nombre' in row.index and row['mes_nombre'] == 'TOTAL YTD':
+        return ['background-color: #E2E8F0; font-weight: bold;'] * len(row)
     return [''] * len(row)
 
 def extraer_peso_numerico(val):
@@ -180,6 +184,9 @@ def cargar_y_transformar_datos():
             
     if 'valor_fob' in df.columns:
         df['valor_fob'] = pd.to_numeric(df['valor_fob'], errors='coerce').fillna(0)
+    
+    if 'valor_cif' in df.columns:
+        df['valor_cif'] = pd.to_numeric(df['valor_cif'], errors='coerce').fillna(0)
         
     for col in ['categoria_maquinaria', 'marca_norm', 'grupo_importador']:
         if col in df.columns: df[col] = df[col].astype('category')
@@ -194,6 +201,7 @@ COL_MARCA = 'marca_norm' if 'marca_norm' in df.columns else 'marca'
 COL_MODELO = 'modelo'
 COL_PESO = 'categoria_peso' if 'categoria_peso' in df.columns else None
 COL_FOB = 'valor_fob' if 'valor_fob' in df.columns else None
+COL_CIF = 'valor_cif' if 'valor_cif' in df.columns else None
 
 # ============ CALLBACKS DE PESO ============
 def seleccionar_todos_pesos():
@@ -375,14 +383,14 @@ if df_actual.empty: st.warning("Sin datos para el periodo seleccionado."); st.st
 
 # ============ CREACIÓN DE PESTAÑAS ============
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Market Share", "🏆 Marcas & Importadores", "⚖️ Por Peso", "💰 FOB Trend", "🟡 Inteligencia New Holland"
+    "📊 Market Share", "🏆 Marcas & Importadores", "⚖️ Por Peso", "💰 Precios FOB / CIF", "🟡 Inteligencia New Holland"
 ])
 
 # ============================================================
 # TAB 1: MARKET SHARE
 # ============================================================
 with tab1:
-    st.markdown('<div class="chart-header"><p class="chart-title-text">📈 Tendencia Mensual Histórica</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="chart-header"><p class="chart-title-text">📈 Tendencia Mensual Histórica (Con Totales)</p></div>', unsafe_allow_html=True)
     df_tend = df_base[df_base['categoria_maquinaria'].isin(cat_sel if cat_sel else cats_disp)]
     tend_all = df_tend.groupby(['año','mes','mes_nombre']).size().reset_index(name='Unidades')
     tend_all['Año'] = tend_all['año'].astype(str)
@@ -392,10 +400,18 @@ with tab1:
     tend_tabla['mes_nombre'] = pd.Categorical(tend_tabla['mes_nombre'], categories=MESES_NOMBRES, ordered=True)
     tend_tabla = tend_tabla.sort_values('mes_nombre').reset_index(drop=True)
     
+    # Agregar Columnas de Totales a la Tabla
+    tend_tabla['Total Mes'] = tend_tabla.iloc[:, 1:].sum(axis=1).astype(int)
+    
+    # Agregar Fila Inferior de Totales Generales
+    total_dict = {col: (tend_tabla[col].sum() if col != 'mes_nombre' else 'TOTAL YTD') for col in tend_tabla.columns}
+    tend_tabla = pd.concat([tend_tabla, pd.DataFrame([total_dict])], ignore_index=True)
+    
     meses_ord = [m for m in MESES_NOMBRES if m in tend_all['mes_nombre'].unique()]
     fig_tend = px.line(tend_all, x='mes_nombre', y='Unidades', color='Año', markers=True, color_discrete_sequence=COLOR_PALETTE)
     fig_tend.update_layout(plot_bgcolor='white', height=450, xaxis={'categoryorder':'array','categoryarray':meses_ord})
-    render_bloque("", fig_tend, tend_tabla, "tgl_tend", "desc_tend", "tendencia_mensual")
+    
+    render_bloque("", fig_tend, tend_tabla.style.apply(destacar_fila_nh, axis=1), "tgl_tend", "desc_tend", "tendencia_mensual")
     
     st.divider()
     st.markdown('<div class="chart-header"><p class="chart-title-text">📋 Variación Anual por Segmento (De Lado a Lado)</p></div>', unsafe_allow_html=True)
@@ -582,7 +598,7 @@ with tab2:
                 render_bloque("📈 Comparativa Logística Mensual", fig_h2h_i, h2h_i_trends, "tgl_h2h_i", "d_h2h_i")
 
 # ============================================================
-# TAB 3: POR PESO
+# TAB 3: POR PESO (TREEMAP CLEAN)
 # ============================================================
 with tab3:
     if not COL_PESO: st.warning("No se localizó columna de pesos en el dataset.")
@@ -608,11 +624,14 @@ with tab3:
                 p_cat[COL_MARCA] = p_cat[COL_MARCA].astype(str)
                 p_cat[COL_PESO] = p_cat[COL_PESO].astype(str)
                 
+                # 🟢 NUEVO: Colorear por categoría de peso, excepto New Holland
+                p_cat['Color_Treemap'] = p_cat.apply(lambda r: MARCA_PROPIA if r[COL_MARCA] == MARCA_PROPIA else r[COL_PESO], axis=1)
+                
                 fig_pb = px.treemap(
                     p_cat,
                     path=[COL_PESO, COL_MARCA], 
                     values='Unidades',
-                    color=COL_MARCA,            
+                    color='Color_Treemap',            
                     color_discrete_map={MARCA_PROPIA: COLOR_NH},
                     color_discrete_sequence=COLOR_PALETTE
                 )
@@ -649,88 +668,94 @@ with tab3:
                         st.dataframe(tabla_laser, hide_index=True, use_container_width=True)
 
 # ============================================================
-# TAB 4: FOB TREND
+# TAB 4: FOB / CIF TREND
 # ============================================================
 with tab4:
-    st.markdown("## 💰 FOB Trend — Inteligencia de Precios")
-    if COL_FOB and df_actual[COL_FOB].sum() > 0:
-        df_fob = df_actual[df_actual[COL_FOB] > 0].copy()
-        fob_trend = df_fob.groupby(['año','mes','mes_nombre',COL_MARCA]).agg(fob_prom=(COL_FOB, 'mean')).reset_index()
-        fob_trend['periodo'] = fob_trend['mes_nombre'] + ' ' + fob_trend['año'].astype(str)
-        t5_fob = [m for m in df_actual[COL_MARCA].value_counts().head(5).index if m in fob_trend[COL_MARCA].unique()]
+    st.markdown("## 💰 Inteligencia de Precios (Trend FOB / CIF)")
+    
+    tipo_costo = st.radio("🔎 Selecciona el valor aduanero a auditar:", ["📦 Valor FOB (Origen)", "🚢 Valor CIF (Puesto en Puerto)"], horizontal=True)
+    col_activa = COL_FOB if "FOB" in tipo_costo else COL_CIF
+    metric_name = "FOB" if "FOB" in tipo_costo else "CIF"
+    
+    if col_activa and df_actual[col_activa].sum() > 0:
+        df_val = df_actual[df_actual[col_activa] > 0].copy()
+        val_trend = df_val.groupby(['año','mes','mes_nombre',COL_MARCA]).agg(val_prom=(col_activa, 'mean')).reset_index()
+        val_trend['periodo'] = val_trend['mes_nombre'] + ' ' + val_trend['año'].astype(str)
+        t5_val = [m for m in df_actual[COL_MARCA].value_counts().head(5).index if m in val_trend[COL_MARCA].unique()]
         
-        marcas_fob = st.multiselect("Selecciona marcas para costeo general:", sorted(fob_trend[COL_MARCA].unique()), default=t5_fob)
+        marcas_val = st.multiselect(f"Selecciona marcas para costeo general ({metric_name}):", sorted(val_trend[COL_MARCA].unique()), default=t5_val)
         
-        if marcas_fob:
-            df_f_plot = fob_trend[fob_trend[COL_MARCA].isin(marcas_fob)].sort_values(['año','mes'])
+        if marcas_val:
+            df_f_plot = val_trend[val_trend[COL_MARCA].isin(marcas_val)].sort_values(['año','mes'])
             df_f_plot['periodo_ord'] = pd.to_datetime(df_f_plot['año'].astype(str) + '-' + df_f_plot['mes'].astype(str) + '-01')
             df_f_plot = df_f_plot.sort_values('periodo_ord')
             
-            fig_f_trend = px.line(df_f_plot, x='periodo', y='fob_prom', color=COL_MARCA, markers=True, color_discrete_map={MARCA_PROPIA: COLOR_NH}, color_discrete_sequence=COLOR_PALETTE, title="Evolución Histórica de Precios FOB Promedio")
+            fig_f_trend = px.line(df_f_plot, x='periodo', y='val_prom', color=COL_MARCA, markers=True, color_discrete_map={MARCA_PROPIA: COLOR_NH}, color_discrete_sequence=COLOR_PALETTE, title=f"Evolución Histórica de Precios {metric_name} Promedio")
             fig_f_trend.update_layout(plot_bgcolor='white', height=400)
             
-            tabla_f_trend = df_f_plot.pivot(index=COL_MARCA, columns='periodo', values='fob_prom').fillna(0)
+            tabla_f_trend = df_f_plot.pivot(index=COL_MARCA, columns='periodo', values='val_prom').fillna(0)
             periodos_ordenados = df_f_plot['periodo'].unique()
             tabla_f_trend = tabla_f_trend[periodos_ordenados].reset_index()
             
             for col in periodos_ordenados:
                 tabla_f_trend[col] = tabla_f_trend[col].astype(int)
             
-            render_bloque("📈 Evolución Histórica de Precios FOB Promedio", fig_f_trend, tabla_f_trend.style.apply(destacar_fila_nh, axis=1), "tgl_fob_top", "d_fob_top")
+            render_bloque(f"📈 Evolución Histórica de Precios {metric_name} Promedio", fig_f_trend, tabla_f_trend.style.apply(destacar_fila_nh, axis=1), f"tgl_{metric_name.lower()}_top", f"d_{metric_name.lower()}_top")
             
             st.divider()
             st.markdown("#### 🎯 Análisis Táctico y Configuración de Precios por Modelo")
             
-            marcas_sub = st.multiselect("Filtra las marcas a auditar al detalle (sub-selección):", marcas_fob, default=marcas_fob, key="ms_fob_sub")
+            marcas_sub = st.multiselect("Filtra las marcas a auditar al detalle (sub-selección):", marcas_val, default=marcas_val, key=f"ms_{metric_name.lower()}_sub")
             
             if marcas_sub:
-                df_fob_f = df_fob[df_fob[COL_MARCA].isin(marcas_sub)].copy()
-                df_fob_f['periodo_ord'] = pd.to_datetime(df_fob_f['año'].astype(str) + '-' + df_fob_f['mes'].astype(str) + '-01')
-                df_fob_f = df_fob_f.sort_values('periodo_ord')
-                df_fob_f['periodo'] = df_fob_f['mes_nombre'] + ' ' + df_fob_f['año'].astype(str)
+                df_val_f = df_val[df_val[COL_MARCA].isin(marcas_sub)].copy()
+                df_val_f['periodo_ord'] = pd.to_datetime(df_val_f['año'].astype(str) + '-' + df_val_f['mes'].astype(str) + '-01')
+                df_val_f = df_val_f.sort_values('periodo_ord')
+                df_val_f['periodo'] = df_val_f['mes_nombre'] + ' ' + df_val_f['año'].astype(str)
 
-                df_scatter = df_fob_f.groupby([COL_MARCA, COL_MODELO, 'periodo', 'periodo_ord']).agg(
-                    fob_unitario=(COL_FOB, 'mean'),
-                    unidades=(COL_FOB, 'size')
+                df_scatter = df_val_f.groupby([COL_MARCA, COL_MODELO, 'periodo', 'periodo_ord']).agg(
+                    val_unitario=(col_activa, 'mean'),
+                    unidades=(col_activa, 'size')
                 ).reset_index().sort_values('periodo_ord')
                 
                 fig_scatter = px.scatter(
-                    df_scatter, x='periodo', y='fob_unitario', size='unidades', color=COL_MARCA,
+                    df_scatter, x='periodo', y='val_unitario', size='unidades', color=COL_MARCA,
                     hover_data=[COL_MODELO], size_max=35, 
                     color_discrete_map={MARCA_PROPIA: COLOR_NH}, color_discrete_sequence=COLOR_PALETTE,
-                    title="Dispersión de Costos Unitarios (Tamaño de burbuja = Volumen de lote)"
+                    title=f"Dispersión de Costos Unitarios {metric_name} (Tamaño de burbuja = Volumen de lote)"
                 )
                 fig_scatter.update_layout(plot_bgcolor='white', height=400)
                 st.plotly_chart(fig_scatter, use_container_width=True)
                 
                 st.markdown("##### 📋 Estructura de Banda Salarial y Configuración de Precios")
-                banda_fob = df_fob_f.groupby([COL_MARCA, COL_MODELO]).agg(
-                    min_fob=(COL_FOB, 'min'),
-                    avg_fob=(COL_FOB, 'mean'),
-                    max_fob=(COL_FOB, 'max'),
-                    unid=(COL_FOB, 'size')
+                banda_val = df_val_f.groupby([COL_MARCA, COL_MODELO, 'categoria_maquinaria']).agg(
+                    min_val=(col_activa, 'min'),
+                    avg_val=(col_activa, 'mean'),
+                    max_val=(col_activa, 'max'),
+                    unid=(col_activa, 'size')
                 ).reset_index().sort_values([COL_MARCA, 'unid'], ascending=[True, False]).reset_index(drop=True)
                 
-                banda_fob['unid'] = banda_fob['unid'].astype(int)
-                banda_fob.rename(columns={
-                    COL_MARCA: 'Marca', COL_MODELO: 'Modelo Comercial',
-                    'min_fob': 'FOB Mínimo ($)', 'avg_fob': 'FOB Promedio ($)',
-                    'max_fob': 'FOB Máximo ($)', 'unid': 'Unidades'
+                banda_val['unid'] = banda_val['unid'].astype(int)
+                banda_val.rename(columns={
+                    COL_MARCA: 'Marca', COL_MODELO: 'Modelo Comercial', 'categoria_maquinaria': 'Segmento',
+                    'min_val': f'{metric_name} Mínimo ($)', 'avg_val': f'{metric_name} Promedio ($)',
+                    'max_val': f'{metric_name} Máximo ($)', 'unid': 'Unidades'
                 }, inplace=True)
                 
-                # 🟢 NUEVO FILTRO LÁSER POR MARCA EN LA TABLA DE PRECIOS
-                marcas_en_banda = sorted(banda_fob['Marca'].unique())
+                marcas_en_banda = sorted(banda_val['Marca'].unique())
                 NH_banda_idx = marcas_en_banda.index(MARCA_PROPIA) if MARCA_PROPIA in marcas_en_banda else 0
-                marca_banda_sel = st.selectbox("🎯 Selecciona una marca para desglosar sus precios por modelo:", marcas_en_banda, index=NH_banda_idx, key="sb_banda_fob")
+                marca_banda_sel = st.selectbox("🎯 Selecciona una marca para desglosar sus precios por modelo:", marcas_en_banda, index=NH_banda_idx, key=f"sb_banda_{metric_name.lower()}")
                 
-                banda_fob_filtrada = banda_fob[banda_fob['Marca'] == marca_banda_sel]
+                banda_val_filtrada = banda_val[banda_val['Marca'] == marca_banda_sel]
                 
                 st.dataframe(
-                    banda_fob_filtrada.style.apply(lambda r: ['background-color: #FFE0B2; font-weight: bold;'] * len(r) if r['Marca']==MARCA_PROPIA else ['']*len(r), axis=1).format({
-                        'FOB Mínimo ($)': '{:,.0f}', 'FOB Promedio ($)': '{:,.0f}', 'FOB Máximo ($)': '{:,.0f}'
+                    banda_val_filtrada.style.apply(lambda r: ['background-color: #FFE0B2; font-weight: bold;'] * len(r) if r['Marca']==MARCA_PROPIA else ['']*len(r), axis=1).format({
+                        f'{metric_name} Mínimo ($)': '{:,.0f}', f'{metric_name} Promedio ($)': '{:,.0f}', f'{metric_name} Máximo ($)': '{:,.0f}'
                     }),
                     hide_index=True, use_container_width=True
                 )
+    else:
+        st.warning(f"No se detectaron datos válidos en la columna de costos {metric_name} para el periodo seleccionado.")
 
 # ============================================================
 # TAB 5: INTELIGENCIA NEW HOLLAND
@@ -810,4 +835,4 @@ with tab5:
 # ============ FOOTER ============
 st.divider()
 f_datos = datetime.fromtimestamp(ULTIMA_ACTUALIZACION).strftime('%d/%m/%Y %H:%M') if ULTIMA_ACTUALIZACION else datetime.now().strftime('%d/%m/%Y %H:%M')
-st.caption(f"Pipeline Gerencial v14.0 Ultimate Final | {len(df):,} registros auditados | Sincronizado al: {f_datos}")
+st.caption(f"Pipeline Gerencial v16.0 Clean Treemap | {len(df):,} registros auditados | Fuente: Veritrade | Sincronizado al: {f_datos}")
