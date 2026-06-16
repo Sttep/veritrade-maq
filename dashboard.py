@@ -383,14 +383,14 @@ if df_actual.empty: st.warning("Sin datos para el periodo seleccionado."); st.st
 
 # ============ CREACIÓN DE PESTAÑAS ============
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Market Share", "🏆 Marcas & Importadores", "⚖️ Por Peso", "💰 Precios FOB / CIF", "🟡 Inteligencia New Holland"
+    "📊 Market Share", "🏆 Marcas & Importadores", "⚖️ Por Peso", "💰 Precios FOB / CIF", "🟡 New Holland"
 ])
 
 # ============================================================
 # TAB 1: MARKET SHARE
 # ============================================================
 with tab1:
-    st.markdown('<div class="chart-header"><p class="chart-title-text">📈 Tendencia Mensual Histórica (Con Totales)</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="chart-header"><p class="chart-title-text">📈 Tendencia Mensual Histórica</p></div>', unsafe_allow_html=True)
     df_tend = df_base[df_base['categoria_maquinaria'].isin(cat_sel if cat_sel else cats_disp)]
     tend_all = df_tend.groupby(['año','mes','mes_nombre']).size().reset_index(name='Unidades')
     tend_all['Año'] = tend_all['año'].astype(str)
@@ -414,7 +414,7 @@ with tab1:
     render_bloque("", fig_tend, tend_tabla.style.apply(destacar_fila_nh, axis=1), "tgl_tend", "desc_tend", "tendencia_mensual")
     
     st.divider()
-    st.markdown('<div class="chart-header"><p class="chart-title-text">📋 Variación Anual por Segmento (De Lado a Lado)</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="chart-header"><p class="chart-title-text">📋 Variación Anual por Segmento</p></div>', unsafe_allow_html=True)
     años_lista = sorted(df_base['año'].unique()) 
     resumen = []
     for cat in (cat_sel if cat_sel else cats_disp):
@@ -501,7 +501,7 @@ with tab2:
                 st.info("💡 *Haz clic directamente sobre cualquier celda o palabra del ranking izquierdo para cargar su ficha analítica aquí en tiempo real.*")
 
         st.divider()
-        st.markdown("### ⚔️ Comparador Head-to-Head Estratégico")
+        st.markdown("### ⚔️ Comparación de Importadores y Marcas Competidoras")
         marcas_h2h = sorted(df_actual[COL_MARCA].dropna().unique())
         c_h1, c_h2 = st.columns(2)
         with c_h1: m_a = st.selectbox("Marca Referencia A", marcas_h2h, index=0, key="h2h_ma")
@@ -517,7 +517,7 @@ with tab2:
             fig_h2h_m.update_layout(plot_bgcolor='white', height=350)
             render_bloque("📈 Curva Comparativa Mensual", fig_h2h_m, h2h_trends, "tgl_h2h_m", "d_h2h_m")
             
-            st.markdown(f"##### 🩻 Desglose Táctico de Modelos Comercializados YTD")
+            st.markdown(f"##### 🩻 Desglose de Modelos Comercializados")
             col_h2h_l, col_h2h_r = st.columns(2)
             with col_h2h_l:
                 st.markdown(f"**Top 5 Modelos — {m_a}**")
@@ -580,7 +580,7 @@ with tab2:
                 st.info("💡 *Haz clic encima de cualquier importador para auditar su mix de marcas y especialización de maquinaria de inmediato.*")
 
         st.divider()
-        st.markdown("## ⚔️ Comparador Head-to-Head (Importadores)")
+        st.markdown("## ⚔️ Dealers vs Dealers")
         if 'grupo_importador' in df_actual.columns:
             imps_h2h = sorted(df_actual['grupo_importador'].dropna().unique())
             ci_h1, ci_h2 = st.columns(2)
@@ -649,7 +649,7 @@ with tab3:
                 
                 if COL_MODELO in df_peso.columns:
                     st.divider()
-                    st.markdown("#### 🎯 Enfoque Láser: Anatomía de Modelos por Fabricante")
+                    st.markdown("#### 🎯 Comparación de Modelos por Fabricante")
                     marcas_visibles = sorted(df_peso[COL_MARCA].dropna().unique())
                     
                     NH_default_idx = marcas_visibles.index(MARCA_PROPIA) if MARCA_PROPIA in marcas_visibles else 0
@@ -673,7 +673,7 @@ with tab3:
 with tab4:
     st.markdown("## 💰 Inteligencia de Precios (Trend FOB / CIF)")
     
-    tipo_costo = st.radio("🔎 Selecciona el valor aduanero a auditar:", ["📦 Valor FOB (Origen)", "🚢 Valor CIF (Puesto en Puerto)"], horizontal=True)
+    tipo_costo = st.radio("🔎 Selecciona el valor aduanero a auditar:", ["📦 Valor FOB", "🚢 Valor CIF"], horizontal=True)
     col_activa = COL_FOB if "FOB" in tipo_costo else COL_CIF
     metric_name = "FOB" if "FOB" in tipo_costo else "CIF"
     
