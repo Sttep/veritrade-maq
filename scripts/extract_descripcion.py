@@ -587,6 +587,8 @@ def etapa4_columnas_derivadas(df: pd.DataFrame, diccionarios: dict) -> pd.DataFr
     return df
 
 
+FOB_MIN_MAQUINARIA = 5_000  # USD — por debajo de este valor se consideran partes/repuestos
+
 def etapa5_filtros(df: pd.DataFrame) -> pd.DataFrame:
     print("\n🔍 ETAPA 5: Filtros...")
     mask = pd.Series(True, index=df.index)
@@ -597,6 +599,13 @@ def etapa5_filtros(df: pd.DataFrame) -> pd.DataFrame:
     if "horas_uso" in df.columns:
         mask &= df["horas_uso"].apply(lambda x: float(x) <= HORAS_MAX_NUEVO if pd.notna(x) else True)
     mask &= ~df["categoria_maquinaria"].str.contains("EXCLUID", na=False)
+    # Excluir partes y accesorios: FOB positivo menor al mínimo de maquinaria completa
+    if "fob_usd" in df.columns:
+        fob_num = pd.to_numeric(df["fob_usd"], errors="coerce").fillna(0)
+        partes = (fob_num > 0) & (fob_num < FOB_MIN_MAQUINARIA)
+        if partes.sum() > 0:
+            print(f"  Excluidos {partes.sum()} registros con FOB < ${FOB_MIN_MAQUINARIA:,} (partes/accesorios)")
+        mask &= ~partes
     df = df[mask].copy()
     print(f"  ✅ {len(df)} registros finales")
     return df

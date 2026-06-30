@@ -511,8 +511,11 @@ def cargar_y_transformar_datos():
     # Conversión de valores numéricos
     if 'valor_fob' in df.columns:
         df['valor_fob'] = pd.to_numeric(df['valor_fob'], errors='coerce').fillna(0)
+        # Valores < $5,000 son partes/repuestos, no maquinaria completa — se excluyen de promedios
+        df.loc[df['valor_fob'] < 5000, 'valor_fob'] = pd.NA
     if 'valor_cif' in df.columns:
         df['valor_cif'] = pd.to_numeric(df['valor_cif'], errors='coerce').fillna(0)
+        df.loc[df['valor_cif'] < 5000, 'valor_cif'] = pd.NA
     
     # Categorización
     for col in ['categoria_maquinaria', 'marca_norm', 'grupo_importador']:
@@ -602,6 +605,17 @@ f_fin_ant = pd.Timestamp(año_fin - 1, mes_fin_num, last_day_fin_ant, 23, 59, 59
 df_actual = df[(df['fecha'] >= f_inicio) & (df['fecha'] <= f_fin)]
 df_anterior = df[(df['fecha'] >= f_inicio_ant) & (df['fecha'] <= f_fin_ant)]
 df_base = df[(df['año'] >= año_limite_inf) & (df['año'] <= año_fin)]
+
+# Aviso de mes con datos parciales
+_ultima_fecha = df['fecha'].max()
+_anio_ult, _mes_ult, _dia_ult = _ultima_fecha.year, _ultima_fecha.month, _ultima_fecha.day
+_, _dias_en_mes = monthrange(_anio_ult, _mes_ult)
+if _dia_ult < _dias_en_mes and año_fin == _anio_ult and mes_fin_num >= _mes_ult:
+    st.warning(
+        f"**Datos parciales:** {MESES_NOMBRES[_mes_ult-1]} {_anio_ult} solo tiene registros hasta el {_dia_ult}/{_mes_ult:02d}/{_anio_ult} "
+        f"({_dia_ult} de {_dias_en_mes} días). Los totales de ese mes no son comparables con meses completos.",
+        icon="⚠️"
+    )
 
 # ============ FILA 2: MULTISELECT & KPIs (DARK BOX) ============
 col_seg, col_kpis = st.columns([1.8, 3.2])

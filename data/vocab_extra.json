@@ -1,6 +1,11 @@
 {
   "_doc": "Extensión editable del vocabulario de maquinaria pesada. 'aliases' mapea variantes crudas -> marca canónica. 'marcas' agrega marcas con sus modelos. 'model_aliases' normaliza variantes de modelo. Basado en diccionario_maquinaria.xlsx",
   "aliases": {
+    "SIN MARCA": "SIN MARCA",
+    "SINMARCA": "SIN MARCA",
+    "S/M": "SIN MARCA",
+    "S.M.": "SIN MARCA",
+    "SIN MARCA DE FABRICA": "SIN MARCA",
     "CAT": "CATERPILLAR",
     "CARTERPILLA": "CATERPILLAR",
     "CARTERPILAR": "CATERPILLAR",
@@ -37,6 +42,7 @@
     "CNH": "NEW HOLLAND"
   },
   "marcas": {
+    "SIN MARCA": [],
     "CATERPILLAR": [
       "320",
       "320D",
