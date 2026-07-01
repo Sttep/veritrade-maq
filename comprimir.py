@@ -26,6 +26,17 @@ def comprimir_datos():
         print("🔄 Unificando...")
         df_completo = pd.concat(dfs, ignore_index=True)
 
+        # Deduplicar registros repetidos entre archivos (mismo DUA + misma descripción)
+        antes = len(df_completo)
+        cols_dedup = [c for c in ['dua_dam', 'fecha_dua', 'fob_usd'] if c in df_completo.columns]
+        if cols_dedup:
+            df_completo = df_completo.drop_duplicates(subset=cols_dedup, keep='first')
+            eliminados = antes - len(df_completo)
+            if eliminados > 0:
+                print(f"🔁 Eliminados {eliminados} registros duplicados (mismo DUA + fecha + FOB)")
+            else:
+                print(f"✅ Sin duplicados entre archivos")
+
         # Excluir partes/accesorios: FOB positivo menor a $5,000
         if 'fob_usd' in df_completo.columns:
             fob_num = pd.to_numeric(df_completo['fob_usd'], errors='coerce').fillna(0)
